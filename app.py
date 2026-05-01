@@ -152,24 +152,31 @@ st.title("📈 Advanced CPR Trading Suite")
 tab1, tab2 = st.tabs(["📊 Stock Breakout Screener", "🎯 Auto Index CPR Tracker"])
 
 # ==========================================
-# TAB 1: STOCK SCREENER
+# TAB 1: STOCK SCREENER (DROPDOWN FILTERS)
 # ==========================================
 with tab1:
-    st.markdown("Scan stocks for breakouts and narrow CPRs.")
+    st.markdown("Scan stocks. Use the dropdown menus in the header to filter specific categories.")
     c1, c2, c3, c4 = st.columns(4)
-    with c1: target_date = st.date_input("Target Date", datetime.date.today() - datetime.timedelta(days=1), key="t1_d")
-    with c2: selected_group = st.selectbox("Select Index Group", list(MARKET_GROUPS.keys()))
-    with c3: pivot_gap_prc = st.number_input("Pivot Gap %", value=0.05, step=0.01) / 100
-    with c4: st.markdown("<br>", unsafe_allow_html=True); run_btn = st.button("🚀 Run Analysis")
+    with c1: 
+        target_date = st.date_input("Target Date", datetime.date.today() - datetime.timedelta(days=1), key="t1_d")
+    with c2: 
+        selected_group = st.selectbox("Select Index Group", list(MARKET_GROUPS.keys()))
+    with c3: 
+        pivot_gap_prc = st.number_input("Pivot Gap %", value=0.05, step=0.01) / 100
+    with c4: 
+        st.markdown("<br>", unsafe_allow_html=True)
+        run_btn = st.button("🚀 Run Analysis")
 
     if run_btn:
         symbols = MARKET_GROUPS[selected_group]
         html_rows = ""
         status_text = st.empty(); my_bar = st.progress(0)
+        
         for idx, sym in enumerate(symbols):
             clean_sym = sym.replace('.NS', '')
             status_text.text(f"Analyzing {clean_sym} ({idx+1}/{len(symbols)})...")
             my_bar.progress((idx + 1) / len(symbols))
+            
             try:
                 ticker = yf.Ticker(sym); df = ticker.history(period="2mo")
                 df.index = df.index.tz_localize(None).date
@@ -180,19 +187,103 @@ with tab1:
                 t_v = float(today['Volume'])
                 p4h = float(df['High'].iloc[t_idx-4 : t_idx].max())
                 av = float(df['Volume'].iloc[t_idx-10 : t_idx].mean())
-                c_txt, c_cls = ("Red Candle", "bg-red") if t_c < t_o else ("Green Candle", "bg-green") if t_c > t_o else ("Doji", "bg-yellow")
-                v_txt, v_cls = ("Good", "bg-green") if t_v > (av*2) else ("Average", "bg-yellow") if t_v > av else ("Low", "bg-red")
+                
+                # CPR & Indicators
                 p = (t_h+t_l+t_c)/3; b = (t_h+t_l)/2; t = (p-b)+p
-                is_n = "Yes" if abs(t-b) <= (pivot_gap_prc*t_c) else "No"; n_cls = "bg-green" if is_n == "Yes" else ""
-                if t_c <= t_o or t_c <= p4h: bo_txt, bo_cls = "No Breakout", "bg-red"
+                is_n = "Yes" if abs(t-b) <= (pivot_gap_prc*t_c) else "No"
+                n_cls = "bg-green" if is_n == "Yes" else ""
+                
+                c_txt, c_cls = ("Red", "bg-red") if t_c < t_o else ("Green", "bg-green") if t_c > t_o else ("Doji", "bg-yellow")
+                v_txt, v_cls = ("Good", "bg-green") if t_v > (av*2) else ("Avg", "bg-yellow") if t_v > av else ("Low", "bg-red")
+                
+                if t_c <= t_o or t_c <= p4h: bo_txt, bo_cls = "None", "bg-red"
                 elif (t_h-t_o) >= (5*(t_h-t_c)): bo_txt, bo_cls = "Breakout", "bg-green"
-                else: bo_txt, bo_cls = "Big Sell Wick", "bg-yellow"
-                html_rows += f"<tr><td><strong>{clean_sym}</strong></td><td>{t_o:.2f}</td><td>{t_h:.2f}</td><td>{t_l:.2f}</td><td>{t_c:.2f}</td><td>{p4h:.2f}</td><td>{int(t_v)}</td><td class='{c_cls}'>{c_txt}</td><td class='{v_cls}'>{v_txt}</td><td class='{n_cls}'>{is_n}</td><td class='{bo_cls}'>{bo_txt}</td><td><a href='https://gocharting.com/terminal?ticker=NSE:{clean_sym}&layout=1' target='_blank'>Chart</a></td></tr>"
+                else: bo_txt, bo_cls = "Wick", "bg-yellow"
+                
+                html_rows += f"<tr><td>{clean_sym}</td><td>{t_o:.2f}</td><td>{t_h:.2f}</td><td>{t_l:.2f}</td><td>{t_c:.2f}</td><td>{p4h:.2f}</td><td>{int(t_v)}</td><td class='{c_cls}'>{c_txt}</td><td class='{v_cls}'>{v_txt}</td><td class='{n_cls}'>{is_n}</td><td class='{bo_cls}'>{bo_txt}</td><td><a href='https://gocharting.com/terminal?ticker=NSE:{clean_sym}&layout=1' target='_blank'>Chart</a></td></tr>"
             except: pass
         my_bar.empty(); status_text.empty()
+        
         if html_rows:
-            st.components.v1.html(f"<style>table {{ width: 100%; border-collapse: collapse; background: #1e1e1e; font-family: sans-serif; font-size: 14px; color: #e0e0e0; }} th, td {{ padding: 10px; border: 1px solid #333; text-align: center; }} th {{ background-color: #2d2d2d; cursor: pointer; }} .bg-red {{ color: #ff6b6b; font-weight: bold;}} .bg-green {{ color: #6bff6b; font-weight: bold;}} .bg-yellow {{ color: #ffff6b; font-weight: bold;}}</style><table><thead><tr><th>Symbol</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Prev 4D High</th><th>Volume</th><th>Candle</th><th>Vol Status</th><th>Narrow CPR</th><th>Breakout Status</th><th>Chart</th></tr></thead><tbody>{html_rows}</tbody></table>", height=800, scrolling=True)
-        else: st.error("No data found.")
+            table_js_html = f"""
+            <style>
+                table {{ width: 100%; border-collapse: collapse; background: #1e1e1e; font-family: sans-serif; font-size: 13px; color: #e0e0e0; }}
+                th, td {{ padding: 8px; border: 1px solid #333; text-align: center; }}
+                th {{ background-color: #2d2d2d; position: sticky; top: 0; }}
+                select {{ width: 100%; padding: 2px; margin-top: 5px; background: #333; color: white; border: 1px solid #555; border-radius: 3px; font-size: 11px; }}
+                .bg-red {{ color: #ff6b6b; }} .bg-green {{ color: #6bff6b; }} .bg-yellow {{ color: #ffff6b; }}
+            </style>
+            <table id="mainTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Symbol<br><select onchange="filterTable()"><option value="">All</option></select></th>
+                        <th>Open</th>
+                        <th>High</th>
+                        <th>Low</th>
+                        <th>Close</th>
+                        <th>4D High</th>
+                        <th>Volume</th>
+                        <th>Candle<br><select onchange="filterTable()"><option value="">All</option></select></th>
+                        <th>Vol Stat<br><select onchange="filterTable()"><option value="">All</option></select></th>
+                        <th>Narrow<br><select onchange="filterTable()"><option value="">All</option></select></th>
+                        <th>Breakout<br><select onchange="filterTable()"><option value="">All</option></select></th>
+                        <th>Chart</th>
+                    </tr>
+                </thead>
+                <tbody>{html_rows}</tbody>
+            </table>
+            <script>
+            // Populate dropdowns with unique values from the table
+            function populateDropdowns() {{
+                var table = document.getElementById("mainTable");
+                var tr = table.getElementsByTagName("tr");
+                var colsToPopulate = [0, 7, 8, 9, 10]; // Symbol, Candle, Vol Stat, Narrow, Breakout
+
+                colsToPopulate.forEach(colIdx => {{
+                    var values = new Set();
+                    for (var i = 1; i < tr.length; i++) {{
+                        var td = tr[i].getElementsByTagName("td")[colIdx];
+                        if (td) values.add(td.textContent || td.innerText);
+                    }}
+                    var select = table.querySelectorAll('thead select')[colsToPopulate.indexOf(colIdx)];
+                    Array.from(values).sort().forEach(val => {{
+                        var opt = document.createElement('option');
+                        opt.value = val;
+                        opt.innerHTML = val;
+                        select.appendChild(opt);
+                    }});
+                }});
+            }}
+
+            function filterTable() {{
+                var table = document.getElementById("mainTable");
+                var selects = table.querySelectorAll('thead select');
+                var tr = table.getElementsByTagName("tr");
+                var colsToFilter = [0, 7, 8, 9, 10];
+
+                for (var i = 1; i < tr.length; i++) {{
+                    var show = true;
+                    for (var j = 0; j < selects.length; j++) {{
+                        var filter = selects[j].value.toUpperCase();
+                        var colIdx = colsToFilter[j];
+                        var td = tr[i].getElementsByTagName("td")[colIdx];
+                        if (td && filter !== "") {{
+                            var txtValue = (td.textContent || td.innerText).toUpperCase();
+                            if (txtValue !== filter) {{
+                                show = false;
+                                break;
+                            }}
+                        }}
+                    }}
+                    tr[i].style.display = show ? "" : "none";
+                }}
+            }}
+            
+            // Auto-run populate on load
+            populateDropdowns();
+            </script>
+            """
+            st.components.v1.html(table_js_html, height=800, scrolling=True)
 
 # ==========================================
 # TAB 2: INDEX CPR TRACKER
